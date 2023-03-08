@@ -1,38 +1,50 @@
 #!/usr/bin/python3
-import requests
-
-url = "https://archives.nseindia.com/content/indices/ind_nifty500list.csv"
-response = requests.get(url)
-
-with open("ind_nifty200list.csv", "wb") as f:
-    f.write(response.content)
-
-import pandas as pd
-
-df = pd.read_csv("ind_nifty200list.csv")
-df = df[["Symbol"]]  # select only the Symbol column
-df.to_csv("symbols.csv", index=False)  # save the modified DataFrame as CSV
-
-df = pd.read_csv("symbols.csv")
-
-symbols = df["Symbol"].tolist()  # create a list from the "Symbol" column
-
-if symbols[0] == "Symbol":  # check if the first element is named "Symbol"
-    symbols = symbols[1:]
-
+import urllib.request
+import csv
 import yfinance as yf
+from datetime import datetime, timedelta
 
-# read symbols from CSV and create list
-import pandas as pd
-df = pd.read_csv("symbols.csv")
-symbols = df["Symbol"].tolist()
+urls = ['https://archives.nseindia.com/content/indices/ind_nifty100list.csv',
+        'https://archives.nseindia.com/content/indices/ind_nifty500list.csv',
+        'https://archives.nseindia.com/content/indices/ind_nifty50list.csv']
 
-# add .NS extension to symbols
-symbols_ns = [s + ".NS" for s in symbols]
+header_saved = False
+symbols = []
 
-# download data for each symbol
-for symbol in symbols_ns:
-    data = yf.download(symbol, period="max")
-    symbol_without_ns = symbol.replace(".NS", "")
-    data.to_csv(f"{symbol_without_ns}.csv")
+# Download CSV files and merge them
+for url in urls:
+    response = urllib.request.urlopen(url)
+    csv_data = response.read().decode('utf-8').splitlines()
+    reader = csv.reader(csv_data)
+    header = next(reader)
+    if not header_saved:
+        symbols_index = header.index('Symbol')
+        header_saved = True
+    for row in reader:
+        symbols.append(row[symbols_index] + '.NS')
 
+# Get historical data for last 3 months for each stock
+start_date = datetime.today() - timedelta(days=90)
+end_date = datetime.today()
+for symbol in symbols:
+    try:
+        stock = yf.Ticker(symbol)
+        data = stock.history(start=start_date, end=end_date)
+        filename = f"{symbol}.csv"
+        data.to_csv(filename)
+        print(f"{filename} downloaded successfully!")
+    except:
+        print(f"Failed to get data for {symbol}")
+
+# Get today's data for each stock
+for symbol in symbols:
+    try:
+        stock = yf.Ticker(symbol)
+        data = stock.history(period='1d')
+        filename = f"{symbol}.csv"
+        data.to_csv(filename, mode='a', header=False)
+        print(f"{filename} updated with today's data!")
+    except:
+        print(f"Failed to update data for {symbol}")
+
+print("All historical data downloaded and updated successfully!")
